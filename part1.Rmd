@@ -169,3 +169,105 @@ dtm_train= get_matrix(train_tweets$text)
 dtm_test = get_matrix(test_tweets$text)
 ```
 
+## MAKING MODEL: XGBOOST
+
+Now, time for the model. I used Extreme Gradient Boosting tree model for classification. I made only two type of sentiment i.e. negative & positive by combining neutral with positive sentiment and used 'binary:logistic' objective function. 
+
+```{r}
+
+param <- list(max_depth = 7, 
+              eta = 0.1, 
+              objective = "binary:logistic", 
+              eval_metric = "error", 
+              nthread = 1)
+
+set.seed(3107)
+xgb_model <- xgb.train(
+  param, 
+  xgb.DMatrix(dtm_train, label = train_tweets$sentiment!=0),
+  nrounds = 50,
+  verbose=0
+)
+
+# We use a (standard) threshold of 0.5
+predictions <- predict(xgb_model, dtm_test) > 0.5
+test_labels <- test_tweets$sentiment!=0
+
+# Accuracy
+print(mean(predictions == test_labels))
+
+```
+
+Approx 79% accuracy was quite impressive, given how little we did in terms of data pre-processing and feature engineering. 
+
+## ARE ABOVE MODEL: XGBOOST REASONABLE
+
+In order to understand this, I’ll run lime’s **explainer()** only on correctly predicted instances while ignoring misclassified observations. I’ll pick first 5 observations for interpretation.
+
+
+```{r}
+
+# select only correct predictions
+predictions_tb = predictions %>% as_tibble() %>% 
+  rename_(predict_label = names(.)[1]) %>%
+  tibble::rownames_to_column()
+
+correct_pred = test_tweets %>%
+  tibble::rownames_to_column() %>% 
+  mutate(test_label = sentiment != 0) %>%
+  left_join(predictions_tb) %>%
+  filter(test_label == predict_label) %>% 
+  pull(text) %>% 
+  head(5)
+
+```
+
+Let’s just define the explainer and run it on the sample of correctly predicted tweets.
+
+```{r}
+
+explainer <- lime(correct_pred, model = xgb_model, 
+                  preprocess = get_matrix)
+
+corr_explanation <- lime::explain(correct_pred, explainer, n_labels = 1, 
+                       n_features = 6, cols = 2, verbose = 0)
+
+```
+
+Ready? Here we go! 
+
+LIME **plot_features** function used to plot features which explains the prediction.
+
+```{r}
+plot_features(corr_explanation)
+```
+
+**Label == 1  is positive sentiment and Label == 0  is negative sentiment ** 
+
+> Actually model looks good by accuracy but internally it is not so strong. Yes, For positive sentiment ***love and great*** word make some sence and For negative sentiment ***no* **make some sence. 
+
+If you feel somehow ill at ease with this kind of presentation of model interpretations, try running **plot_text_explanations()** instead:
+
+```{r}
+plot_text_explanations(corr_explanation)
+```
+
+# CONCLUSION
+
+Trust is crucial for effective human interaction with machine learning systems, and that explaining individual predictions is important in assessing trust. Explanations are useful for a variety of models in trust-related tasks in the text and image domains, with both expert and non-expert users: deciding between models, assessing trust, improving untrustworthy models, and getting insights into predictions
+
+# REFERENCES
+
+Offical Paper: "Why Should I Trust You?": Explaining the Predictions of Any Classifier
+https://arxiv.org/abs/1602.04938
+
+LIME Package: Local Interpretable Model-Agnostic Explanations (R port of original Python package)
+https://github.com/thomasp85/lime
+
+Kdnuggets Blog: Introduction to Local Interpretable Model-Agnostic Explanations (LIME)
+
+PPT by Kasia Kulma (PhD), Data Scientist, Aviva: Interpretable Machine Learning Using LIME Framework
+https://www.slideshare.net/0xdata/interpretable-machine-learning-using-lime-framework-kasia-kulma-phd-data-scientist
+
+LIME Package Python: Lime: Explaining the predictions of any machine learning classifier
+https://github.com/marcotcr/lime
