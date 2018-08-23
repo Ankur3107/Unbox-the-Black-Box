@@ -95,3 +95,77 @@ Machine learning is at the core of many recent advances in science and technolog
 ![](https://image.ibb.co/dSwtSe/lime3.png)
 
 
+# DEMONSTRATION
+
+## LOADING NECESSARY PACKAGES
+
+```{r}
+#load packages
+library(readr)
+library(lime)
+library(xgboost)
+library(caret)
+library(dplyr)
+library(tibble)
+library(text2vec) 
+library(qdapRegex)
+```
+
+## LOADING TWEETS DATA
+
+```{r}
+tweets <- read_csv('../input/Tweets.csv')
+head(tweets,2)
+```
+
+## DATA CLEANING
+
+let’s clean the data a little: select only tweets text and sentiment, change column names to something more readable and remove URLs from text.
+
+```{r}
+
+all_tweets <- tweets %>% 
+  rename(sentiment = airline_sentiment) %>% 
+  select(sentiment, text) %>% 
+  mutate(text = qdapRegex::rm_url(text)) %>% #removes URLs from text
+  na.omit()
+  
+head(all_tweets)
+
+```
+
+## SPLIT DATA INTO TRAIN & TEST
+
+it’s time to split it into train and test sets - caret package
+
+```{r}
+
+set.seed(3107)
+trainIndex <- createDataPartition(all_tweets$sentiment, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+
+train_tweets <- all_tweets[ trainIndex,]
+test_tweets <- all_tweets[ -trainIndex,]
+
+train_tweets$sentiment <- as.numeric(as.factor(train_tweets$sentiment)) -1
+test_tweets$sentiment <- as.numeric(as.factor(test_tweets$sentiment)) -1
+
+str(train_tweets)
+
+```
+## TRANSFORM INTO DOCUMENT TERM MATRICES
+
+A document-term matrix or term-document matrix is a mathematical matrix that describes the frequency of terms that occur in a collection of documents. In a document-term matrix, rows correspond to documents in the collection and columns correspond to terms.
+
+```{r}
+# tokenizes text data nad creates Document Term Matrix
+get_matrix <- function(text) {
+  it <- itoken(text, progressbar = FALSE)
+  create_dtm(it, vectorizer = hash_vectorizer())
+}
+
+dtm_train= get_matrix(train_tweets$text)
+dtm_test = get_matrix(test_tweets$text)
+```
+
